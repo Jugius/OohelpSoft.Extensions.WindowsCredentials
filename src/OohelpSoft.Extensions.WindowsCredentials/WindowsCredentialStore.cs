@@ -255,7 +255,10 @@ public sealed class WindowsCredentialStore
         [StructLayout(
             LayoutKind.Sequential,
             CharSet = CharSet.Unicode)]
+
+#pragma warning disable S101 // Types should be named in PascalCase
         public struct CREDENTIAL
+#pragma warning restore S101 // Types should be named in PascalCase
         {
             public uint Flags;
             public uint Type;
@@ -277,43 +280,23 @@ public sealed class WindowsCredentialStore
             public IntPtr UserName;
         }
 
-        [DllImport(
-            "advapi32.dll",
-            EntryPoint = "CredWriteW",
-            CharSet = CharSet.Unicode,
-            SetLastError = true)]
+        [DllImport("advapi32.dll", EntryPoint = "CredWriteW", CharSet = CharSet.Unicode, SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool CredWrite(
-            ref CREDENTIAL credential,
-            uint flags);
+        public static extern bool CredWrite(ref CREDENTIAL credential, uint flags);
 
-        [DllImport(
-            "advapi32.dll",
-            EntryPoint = "CredReadW",
-            CharSet = CharSet.Unicode,
-            SetLastError = true)]
+        [DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool CredRead(
-            string targetName,
-            uint type,
-            uint flags,
-            out IntPtr credential);
+        public static extern bool CredRead(string targetName, uint type, uint flags, out IntPtr credential);
 
-        [DllImport(
-            "advapi32.dll",
-            EntryPoint = "CredDeleteW",
-            CharSet = CharSet.Unicode,
-            SetLastError = true)]
+        [DllImport("advapi32.dll", EntryPoint = "CredDeleteW", CharSet = CharSet.Unicode, SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool CredDelete(
-            string targetName,
-            uint type,
-            uint flags);
+        public static extern bool CredDelete(string targetName, uint type, uint flags);
 
-        [DllImport(
-            "advapi32.dll",
-            EntryPoint = "CredFree")]
-        public static extern void CredFree(
-            IntPtr credential);
+        [DllImport("advapi32.dll", EntryPoint = "CredFree")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static extern void CredFree(IntPtr credential);
     }
 }

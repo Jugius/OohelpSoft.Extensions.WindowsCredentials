@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.Text;
+using System.Security.Cryptography;
 
 namespace OohelpSoft.WindowsCredentials;
 
@@ -81,39 +81,50 @@ public static class WindowsCredentialPrompt
         var passwordSize =
             NativeMethods.CREDUI_MAX_PASSWORD_LENGTH + 1;
 
-        var userName = new StringBuilder(
-            checked((int)userNameSize));
+        var userName = new char[checked((int)userNameSize)];
+        var domainName = new char[checked((int)domainNameSize)];
+        var password = new char[checked((int)passwordSize)];
 
-        var domainName = new StringBuilder(
-            checked((int)domainNameSize));
-
-        var password = new StringBuilder(
-            checked((int)passwordSize));
-
-        var result =
-            NativeMethods.CredUnPackAuthenticationBuffer(
-                0,
-                authBuffer,
-                authBufferSize,
-                userName,
-                ref userNameSize,
-                domainName,
-                ref domainNameSize,
-                password,
-                ref passwordSize);
-
-        if (!result)
+        try
         {
-            throw new Win32Exception(
-                Marshal.GetLastWin32Error(),
-                "Не удалось получить учетные данные.");
+            var result =
+                NativeMethods.CredUnPackAuthenticationBuffer(
+                    0,
+                    authBuffer,
+                    authBufferSize,
+                    userName,
+                    ref userNameSize,
+                    domainName,
+                    ref domainNameSize,
+                    password,
+                    ref passwordSize);
+
+            if (!result)
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "Не удалось получить учетные данные.");
+            }
+
+            var fullUserName = CombineUserName(
+                new string(userName),
+                new string(domainName));
+
+            return new UserCredentials(
+                fullUserName,
+                new string(password));
         }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(
+                MemoryMarshal.AsBytes(userName.AsSpan()));
 
-        var fullUserName = CombineUserName(userName.ToString(), domainName.ToString());
+            CryptographicOperations.ZeroMemory(
+                MemoryMarshal.AsBytes(domainName.AsSpan()));
 
-        return new UserCredentials(
-            fullUserName,
-            password.ToString());
+            CryptographicOperations.ZeroMemory(
+                MemoryMarshal.AsBytes(password.AsSpan()));
+        }
     }
     private static string CombineUserName(string userName, string domainName)
     {
@@ -140,7 +151,10 @@ public static class WindowsCredentialPrompt
         [StructLayout(
             LayoutKind.Sequential,
             CharSet = CharSet.Unicode)]
+
+#pragma warning disable S101 // Types should be named in PascalCase
         public struct CREDUI_INFO
+#pragma warning restore S101 // Types should be named in PascalCase
         {
             public uint cbSize;
             public IntPtr hwndParent;
@@ -154,10 +168,8 @@ public static class WindowsCredentialPrompt
             public IntPtr hbmBanner;
         }
 
-        [DllImport(
-            "credui.dll",
-            CharSet = CharSet.Unicode,
-            SetLastError = true)]
+        [DllImport("credui.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         public static extern uint CredUIPromptForWindowsCredentials(
             ref CREDUI_INFO uiInfo,
             uint authError,
@@ -169,24 +181,22 @@ public static class WindowsCredentialPrompt
             ref bool save,
             uint flags);
 
-        [DllImport(
-            "credui.dll",
-            CharSet = CharSet.Unicode,
-            SetLastError = true)]
+        [DllImport("credui.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool CredUnPackAuthenticationBuffer(
-            uint flags,
-            IntPtr authBuffer,
-            uint authBufferSize,
-            StringBuilder userName,
-            ref uint userNameSize,
-            StringBuilder domainName,
-            ref uint domainNameSize,
-            StringBuilder password,
+            uint flags, 
+            IntPtr authBuffer, 
+            uint authBufferSize, 
+            char[] userName, 
+            ref uint userNameSize, 
+            char[] domainName, 
+            ref uint domainNameSize, 
+            char[] password, 
             ref uint passwordSize);
 
         [DllImport("ole32.dll")]
-        public static extern void CoTaskMemFree(
-            IntPtr pv);
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static extern void CoTaskMemFree(IntPtr pv);
     }
 }
