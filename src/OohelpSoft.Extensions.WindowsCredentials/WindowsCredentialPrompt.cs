@@ -107,12 +107,12 @@ public static class WindowsCredentialPrompt
             }
 
             var fullUserName = CombineUserName(
-                new string(userName),
-                new string(domainName));
+                GetNullTerminatedString(userName),
+                GetNullTerminatedString(domainName));
 
             return new UserCredentials(
                 fullUserName,
-                new string(password));
+                GetNullTerminatedString(password));
         }
         finally
         {
@@ -125,6 +125,16 @@ public static class WindowsCredentialPrompt
             CryptographicOperations.ZeroMemory(
                 MemoryMarshal.AsBytes(password.AsSpan()));
         }
+    }
+    private static string GetNullTerminatedString(
+    char[] buffer)
+    {
+        var length = Array.IndexOf(buffer, '\0');
+
+        return new string(
+            buffer,
+            0,
+            length >= 0 ? length : buffer.Length);
     }
     private static string CombineUserName(string userName, string domainName)
     {
