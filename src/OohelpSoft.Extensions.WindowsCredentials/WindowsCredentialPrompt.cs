@@ -69,8 +69,8 @@ public static class WindowsCredentialPrompt
     }
 
     private static UserCredentials UnpackCredentials(
-    IntPtr authBuffer,
-    uint authBufferSize)
+        IntPtr authBuffer,
+        uint authBufferSize)
     {
         var userNameSize =
             NativeMethods.CREDUI_MAX_USERNAME_LENGTH + 1;
