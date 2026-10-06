@@ -138,10 +138,13 @@ public static class WindowsCredentialPrompt
     }
     private static string CombineUserName(string userName, string domainName)
     {
-        if (string.IsNullOrWhiteSpace(userName))
+        return string.IsNullOrWhiteSpace(domainName)
+            ? userName
+            : $"{domainName}\\{userName}";
+    }
         {
-            throw new InvalidOperationException(
-                "Windows не вернула имя пользователя.");
+            throw new Win32Exception(
+                error,
         }
 
         return string.IsNullOrWhiteSpace(domainName)
