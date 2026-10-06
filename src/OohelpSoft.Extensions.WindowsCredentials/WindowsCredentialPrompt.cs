@@ -7,9 +7,10 @@ namespace OohelpSoft.WindowsCredentials;
 public static class WindowsCredentialPrompt
 {
     public static UserCredentials? Prompt(
-        IntPtr? parentWindowHandle = null,
+        nint? parentWindowHandle = null,
         string? message = null,
-        string? caption = null)
+        string? caption = null,
+        string? initialUserName = null)
     {
         var uiInfo = new NativeMethods.CREDUI_INFO
         {
@@ -25,45 +26,72 @@ public static class WindowsCredentialPrompt
             hbmBanner = IntPtr.Zero
         };
 
-        uint authPackage = 0;
-        var save = false;
+        nint inAuthBuffer = IntPtr.Zero;
+        uint inAuthBufferSize = 0;
 
-        var result =
-            NativeMethods.CredUIPromptForWindowsCredentials(
-                ref uiInfo,
-                0,
-                ref authPackage,
-                IntPtr.Zero,
-                0,
-                out var authBuffer,
-                out var authBufferSize,
-                ref save,
-                NativeMethods.CREDUIWIN_GENERIC);
-
-        if (result == NativeMethods.ERROR_CANCELLED)
+        if (!string.IsNullOrWhiteSpace(initialUserName))
         {
-            return null;
-        }
-
-        if (result != NativeMethods.ERROR_SUCCESS)
-        {
-            throw new Win32Exception(
-                (int)result,
-                "Не удалось открыть окно ввода учетных данных.");
+            inAuthBuffer = PackInitialCredentials(
+                initialUserName,
+                out inAuthBufferSize);
         }
 
         try
         {
-            return UnpackCredentials(
-                authBuffer,
-                authBufferSize);
+            uint authPackage = 0;
+            var save = false;
+
+            var result =
+                NativeMethods.CredUIPromptForWindowsCredentials(
+                    ref uiInfo,
+                    0,
+                    ref authPackage,
+                    inAuthBuffer,
+                    inAuthBufferSize,
+                    out var authBuffer,
+                    out var authBufferSize,
+                    ref save,
+                    NativeMethods.CREDUIWIN_GENERIC);
+
+            if (result == NativeMethods.ERROR_CANCELLED)
+            {
+                return null;
+            }
+
+            if (result != NativeMethods.ERROR_SUCCESS)
+            {
+                throw new Win32Exception(
+                    (int)result,
+                    "Не удалось открыть окно ввода учетных данных.");
+            }
+
+            try
+            {
+                return UnpackCredentials(
+                    authBuffer,
+                    authBufferSize);
+            }
+            finally
+            {
+                if (authBuffer != IntPtr.Zero)
+                {
+                    UnmanagedMemory.ZeroUnmanagedMemory(
+                        authBuffer,
+                        checked((int)authBufferSize));
+
+                    NativeMethods.CoTaskMemFree(authBuffer);
+                }
+            }
         }
         finally
         {
-            if (authBuffer != IntPtr.Zero)
+            if (inAuthBuffer != IntPtr.Zero)
             {
-                UnmanagedMemory.ZeroUnmanagedMemory(authBuffer, checked((int)authBufferSize));
-                NativeMethods.CoTaskMemFree(authBuffer);
+                UnmanagedMemory.ZeroUnmanagedMemory(
+                    inAuthBuffer,
+                    checked((int)inAuthBufferSize));
+
+                Marshal.FreeHGlobal(inAuthBuffer);
             }
         }
     }
@@ -142,19 +170,52 @@ public static class WindowsCredentialPrompt
             ? userName
             : $"{domainName}\\{userName}";
     }
+    private static nint PackInitialCredentials(
+    string userName,
+    out uint bufferSize)
+    {
+        bufferSize = 0;
+
+        NativeMethods.CredPackAuthenticationBuffer(
+            0,
+            userName,
+            string.Empty,
+            IntPtr.Zero,
+            ref bufferSize);
+
+        int error = Marshal.GetLastWin32Error();
+
+        if (error != NativeMethods.ERROR_INSUFFICIENT_BUFFER)
         {
             throw new Win32Exception(
                 error,
+                "Не удалось определить размер буфера учетных данных.");
         }
 
-        return string.IsNullOrWhiteSpace(domainName)
-            ? userName
-            : $"{domainName}\\{userName}";
-    }
+        nint buffer = Marshal.AllocHGlobal(checked((int)bufferSize));
 
+        if (!NativeMethods.CredPackAuthenticationBuffer(
+            0,
+            userName,
+            string.Empty,
+            buffer,
+            ref bufferSize))
+        {
+            error = Marshal.GetLastWin32Error();
+
+            Marshal.FreeHGlobal(buffer);
+
+            throw new Win32Exception(
+                error,
+                "Не удалось подготовить буфер учетных данных.");
+        }
+
+        return buffer;
+    }
     private static class NativeMethods
     {
         public const uint ERROR_SUCCESS = 0;
+        public const int ERROR_INSUFFICIENT_BUFFER = 122;
         public const uint ERROR_CANCELLED = 1223;
         public const uint CREDUIWIN_GENERIC = 0x00000001;
         public const uint CREDUI_MAX_USERNAME_LENGTH = 513;
@@ -197,6 +258,16 @@ public static class WindowsCredentialPrompt
         [DllImport("credui.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool CredPackAuthenticationBuffer(
+            uint dwFlags,
+            string pszUserName,
+            string pszPassword,
+            IntPtr pPackedCredentials,
+            ref uint pcbPackedCredentials);
+
+        [DllImport("credui.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool CredUnPackAuthenticationBuffer(
             uint flags, 
             IntPtr authBuffer, 
@@ -210,6 +281,6 @@ public static class WindowsCredentialPrompt
 
         [DllImport("ole32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        public static extern void CoTaskMemFree(IntPtr pv);
+        public static extern void CoTaskMemFree(IntPtr pv);        
     }
 }
